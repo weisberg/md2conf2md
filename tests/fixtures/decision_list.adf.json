@@ -1,0 +1,1 @@
+{"version":1,"type":"doc","content":[{"type":"decisionList","attrs":{"localId":""},"content":[{"type":"decisionItem","attrs":{"localId":"","state":"DECIDED"},"content":[{"type":"text","text":"We will ship on Friday."}]},{"type":"decisionItem","attrs":{"localId":"","state":"DECIDED"},"content":[{"type":"text","text":"Roll back the migration if p95 latency exceeds 300ms."}]}]}]}

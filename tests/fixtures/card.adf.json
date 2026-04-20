@@ -1,0 +1,1 @@
+{"version":1,"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Here is an "},{"type":"inlineCard","attrs":{"url":"https://example.com/inline"}},{"type":"text","text":" inline card."}]},{"type":"blockCard","attrs":{"url":"https://example.com/block"}},{"type":"embedCard","attrs":{"url":"https://example.com/embed","layout":"center","width":75.0}}]}

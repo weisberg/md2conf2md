@@ -1,0 +1,2 @@
+- [!] We will ship on Friday.
+- [!] Roll back the migration if p95 latency exceeds 300ms.

@@ -1,0 +1,1 @@
+{"version":1,"type":"doc","content":[{"type":"taskList","attrs":{"localId":""},"content":[{"type":"taskItem","attrs":{"localId":"","state":"DONE"},"content":[{"type":"paragraph","content":[{"type":"text","text":"Done task"}]}]},{"type":"taskItem","attrs":{"localId":"","state":"TODO"},"content":[{"type":"paragraph","content":[{"type":"text","text":"Todo task"}]}]}]}]}
