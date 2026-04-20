@@ -316,7 +316,7 @@ fn parse_inline_directives(text: &str, marks: &[Mark]) -> Vec<Node> {
             remaining = &remaining[pos..];
 
             // Try to parse the directive
-            if let Some((node, consumed)) = try_parse_directive(remaining) {
+            if let Some((node, consumed)) = try_parse_directive(remaining, marks) {
                 result.push(node);
                 remaining = &remaining[consumed..];
             } else {
@@ -352,7 +352,7 @@ fn find_directive_start(text: &str) -> Option<usize> {
 
 /// Try to parse a directive starting at the beginning of the string.
 /// Returns the parsed Node and the number of bytes consumed.
-fn try_parse_directive(text: &str) -> Option<(Node, usize)> {
+fn try_parse_directive(text: &str, parent_marks: &[Mark]) -> Option<(Node, usize)> {
     if let Some(rest) = text.strip_prefix(":status[") {
         parse_bracketed_directive(rest, |body, attrs| {
             let color = parse_attr_value(attrs, "color").unwrap_or("neutral");
@@ -386,7 +386,7 @@ fn try_parse_directive(text: &str) -> Option<(Node, usize)> {
         .map(|(node, consumed)| (node, consumed + ":date[".len()))
     } else if let Some(rest) = text.strip_prefix(":span[") {
         parse_bracketed_directive(rest, |body, attrs| {
-            let mut marks: Vec<Mark> = Vec::new();
+            let mut marks: Vec<Mark> = parent_marks.to_vec();
             if parse_attr_value(attrs, "underline").is_some() {
                 marks.push(Mark::Underline);
             }

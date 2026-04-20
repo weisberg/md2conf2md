@@ -83,20 +83,16 @@ pub fn write_inline(node: &Node, out: &mut String) {
 
 /// Write text with its marks applied.
 fn write_marked_text(text: &str, marks: &[Mark], out: &mut String) {
-    // Separate marks into CommonMark marks and directive-only marks
+    // Separate marks into CommonMark marks and directive-only marks.
+    // Links wrap the rendered label last so they compose with both Markdown
+    // marks and :span[...] directive marks.
     let mut cm_prefix = String::new();
     let mut cm_suffix = String::new();
     let mut directive_attrs: Vec<String> = Vec::new();
+    let mut link_attrs: Option<&LinkAttrs> = None;
+    let mut is_code = false;
 
-    // Re-order so Code mark is innermost (processed last → tightest against
-    // the text). Backticks can't contain other Markdown syntax, so any
-    // emphasis/strong/strike marks must wrap outside of the code span.
-    let mut ordered: Vec<&Mark> = marks.iter().filter(|m| !matches!(m, Mark::Code)).collect();
-    if marks.iter().any(|m| matches!(m, Mark::Code)) {
-        ordered.push(&Mark::Code);
-    }
-
-    for mark in ordered.into_iter() {
+    for mark in marks {
         match mark {
             Mark::Strong => {
                 cm_prefix.push_str("**");
@@ -106,29 +102,13 @@ fn write_marked_text(text: &str, marks: &[Mark], out: &mut String) {
                 cm_prefix.push('*');
                 cm_suffix.insert(0, '*');
             }
-            Mark::Code => {
-                cm_prefix.push('`');
-                cm_suffix.insert(0, '`');
-            }
+            Mark::Code => is_code = true,
             Mark::Strike => {
                 cm_prefix.push_str("~~");
                 cm_suffix.insert_str(0, "~~");
             }
             Mark::Link { attrs } => {
-                // Link wraps the entire text. Build the whole `[text](href "title")`
-                // string in one pass so it composes cleanly with other marks.
-                out.push('[');
-                out.push_str(&cm_prefix);
-                out.push_str(text);
-                out.push_str(&cm_suffix);
-                if let Some(ref title) = attrs.title {
-                    // Escape `"` in the title
-                    let esc = title.replace('"', "\\\"");
-                    out.push_str(&format!("]({} \"{esc}\")", attrs.href));
-                } else {
-                    out.push_str(&format!("]({})", attrs.href));
-                }
-                return;
+                link_attrs.get_or_insert(attrs);
             }
             Mark::Underline => {
                 directive_attrs.push("underline=1".to_string());
@@ -150,21 +130,54 @@ fn write_marked_text(text: &str, marks: &[Mark], out: &mut String) {
         }
     }
 
-    // If we have directive-only marks, use :span[text]{attrs} syntax
+    let mut rendered = String::new();
+    rendered.push_str(&cm_prefix);
+
     if !directive_attrs.is_empty() {
-        out.push_str(&cm_prefix);
-        out.push_str(&format!(":span[{text}]{{{}}}", directive_attrs.join(" ")));
-        out.push_str(&cm_suffix);
+        rendered.push_str(&format!(":span[{text}]{{{}}}", directive_attrs.join(" ")));
+    } else if is_code {
+        rendered.push_str(&format_code_span(text));
     } else {
-        let is_code = marks.iter().any(|m| matches!(m, Mark::Code));
-        out.push_str(&cm_prefix);
-        if is_code {
-            out.push_str(text);
-        } else {
-            out.push_str(&escape_md(text));
-        }
-        out.push_str(&cm_suffix);
+        rendered.push_str(&escape_md(text));
     }
+
+    rendered.push_str(&cm_suffix);
+
+    if let Some(attrs) = link_attrs {
+        out.push('[');
+        out.push_str(&rendered);
+        if let Some(ref title) = attrs.title {
+            let esc = title.replace('\\', "\\\\").replace('"', "\\\"");
+            out.push_str(&format!("]({} \"{esc}\")", attrs.href));
+        } else {
+            out.push_str(&format!("]({})", attrs.href));
+        }
+    } else {
+        out.push_str(&rendered);
+    }
+}
+
+fn format_code_span(text: &str) -> String {
+    let fence = "`".repeat(max_backtick_run(text) + 1);
+    if text.starts_with('`') || text.ends_with('`') {
+        format!("{fence} {text} {fence}")
+    } else {
+        format!("{fence}{text}{fence}")
+    }
+}
+
+fn max_backtick_run(text: &str) -> usize {
+    let mut max_run = 0;
+    let mut current = 0;
+    for ch in text.chars() {
+        if ch == '`' {
+            current += 1;
+            max_run = max_run.max(current);
+        } else {
+            current = 0;
+        }
+    }
+    max_run
 }
 
 /// Backslash-escape characters that would otherwise trigger Markdown parsing.

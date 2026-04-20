@@ -76,13 +76,11 @@ pub fn write_block(node: &Node, out: &mut String, indent: &str) {
         Node::TaskList { content, .. } => {
             for item in content {
                 if let Node::TaskItem { attrs, content } = item {
-                    let checkbox = match attrs.state {
+                    let prefix = match attrs.state {
                         TaskState::Done => "- [x] ",
                         TaskState::Todo => "- [ ] ",
                     };
-                    out.push_str(indent);
-                    out.push_str(checkbox);
-                    write_task_item_content(content, out, indent);
+                    write_prefixed_item_content(content, prefix, 2, out, indent);
                 }
             }
         }
@@ -92,9 +90,7 @@ pub fn write_block(node: &Node, out: &mut String, indent: &str) {
                     let prefix = match attrs.state {
                         DecisionState::Decided => "- [!] ",
                     };
-                    out.push_str(indent);
-                    out.push_str(prefix);
-                    write_task_item_content(content, out, indent);
+                    write_prefixed_item_content(content, prefix, 2, out, indent);
                 }
             }
         }
@@ -330,46 +326,68 @@ fn write_inlines(nodes: &[Node], out: &mut String) {
 /// Write a list item with the given prefix.
 fn write_list_item(item: &Node, prefix: &str, out: &mut String, indent: &str) {
     if let Node::ListItem { content } = item {
-        let cont_indent = format!("{indent}{}", " ".repeat(prefix.len()));
-        let mut first = true;
-        for child in content {
-            if first {
-                out.push_str(indent);
-                out.push_str(prefix);
-                // Write the first block inline with the prefix
-                match child {
-                    Node::Paragraph { content } => {
-                        write_inlines(content, out);
-                        out.push('\n');
-                    }
-                    _ => {
-                        write_block(child, out, "");
-                    }
-                }
-                first = false;
-            } else {
-                // Blank separator so comrak keeps sibling blocks distinct.
-                out.push_str(cont_indent.trim_end());
-                out.push('\n');
-                write_block(child, out, &cont_indent);
-            }
-        }
+        write_prefixed_item_content(content, prefix, prefix.len(), out, indent);
     }
 }
 
-/// Write task item content inline.
-fn write_task_item_content(content: &[Node], out: &mut String, _indent: &str) {
-    for child in content {
-        match child {
-            Node::Paragraph { content } => {
-                write_inlines(content, out);
-            }
-            _ => {
-                write_inline(child, out);
-            }
-        }
+/// Write list-like item content with a Markdown marker prefix.
+fn write_prefixed_item_content(
+    content: &[Node],
+    prefix: &str,
+    continuation_width: usize,
+    out: &mut String,
+    indent: &str,
+) {
+    let cont_indent = format!("{indent}{}", " ".repeat(continuation_width));
+    out.push_str(indent);
+    out.push_str(prefix);
+
+    if content.is_empty() {
+        out.push('\n');
+        return;
     }
-    out.push('\n');
+
+    let rest = match &content[0] {
+        Node::Paragraph {
+            content: paragraph_content,
+        } => {
+            write_inlines(paragraph_content, out);
+            out.push('\n');
+            &content[1..]
+        }
+        _ if is_inline_node(&content[0]) => {
+            let inline_count = content.iter().take_while(|n| is_inline_node(n)).count();
+            write_inlines(&content[..inline_count], out);
+            out.push('\n');
+            &content[inline_count..]
+        }
+        first => {
+            write_block(first, out, "");
+            &content[1..]
+        }
+    };
+
+    for child in rest {
+        // Blank separator so comrak keeps sibling blocks distinct.
+        out.push_str(cont_indent.trim_end());
+        out.push('\n');
+        write_block(child, out, &cont_indent);
+    }
+}
+
+fn is_inline_node(node: &Node) -> bool {
+    matches!(
+        node,
+        Node::Text { .. }
+            | Node::HardBreak
+            | Node::Emoji { .. }
+            | Node::Mention { .. }
+            | Node::Date { .. }
+            | Node::Status { .. }
+            | Node::InlineCard { .. }
+            | Node::MediaInline { .. }
+            | Node::Placeholder { .. }
+    )
 }
 
 /// Write a GFM pipe table.
@@ -474,7 +492,5 @@ fn get_cell_inlines(content: &[Node]) -> Vec<Node> {
 /// Write inner content as a body (for panels, expands, etc.)
 /// This emits the content without leading blank lines.
 fn write_blocks_as_body(content: &[Node], out: &mut String, indent: &str) {
-    for node in content {
-        write_block(node, out, indent);
-    }
+    write_blocks(content, out, indent);
 }

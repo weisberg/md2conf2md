@@ -32,41 +32,48 @@ pub fn convert_block<'a>(node: &'a ArenaNode<'a, RefCell<Ast>>) -> Vec<Node> {
             let content = convert_children(node);
             vec![Node::Blockquote { content }]
         }
-        NodeValue::List(list) => {
-            let items = convert_children(node);
-            match list.list_type {
-                ListType::Bullet => {
-                    // Check if this is a task list by inspecting children
-                    let is_task_list = node.children().any(|child| {
-                        let child_ast = child.data.borrow();
-                        matches!(child_ast.value, NodeValue::TaskItem(_))
-                    });
-                    if is_task_list {
-                        vec![Node::TaskList {
-                            attrs: Some(TaskListAttrs {
-                                local_id: String::new(),
-                            }),
-                            content: items,
-                        }]
-                    } else {
-                        vec![Node::BulletList { content: items }]
-                    }
+        NodeValue::List(list) => match list.list_type {
+            ListType::Bullet => {
+                let mut has_task_items = false;
+                let mut all_task_items = true;
+                for child in node.children() {
+                    let child_ast = child.data.borrow();
+                    let is_task = matches!(child_ast.value, NodeValue::TaskItem(_));
+                    has_task_items |= is_task;
+                    all_task_items &= is_task;
                 }
-                ListType::Ordered => {
-                    let attrs = if list.start != 1 {
-                        Some(OrderedListAttrs {
-                            order: list.start as u32,
-                        })
-                    } else {
-                        None
-                    };
-                    vec![Node::OrderedList {
-                        attrs,
-                        content: items,
+
+                if has_task_items && all_task_items {
+                    vec![Node::TaskList {
+                        attrs: Some(TaskListAttrs {
+                            local_id: String::new(),
+                        }),
+                        content: convert_children(node),
                     }]
+                } else {
+                    let content = if has_task_items {
+                        convert_mixed_task_list_children(node)
+                    } else {
+                        convert_children(node)
+                    };
+                    vec![Node::BulletList { content }]
                 }
             }
-        }
+            ListType::Ordered => {
+                let items = convert_children(node);
+                let attrs = if list.start != 1 {
+                    Some(OrderedListAttrs {
+                        order: list.start as u32,
+                    })
+                } else {
+                    None
+                };
+                vec![Node::OrderedList {
+                    attrs,
+                    content: items,
+                }]
+            }
+        },
         NodeValue::Item(_) => {
             let content = convert_children(node);
             vec![Node::ListItem { content }]
@@ -193,4 +200,50 @@ pub fn convert_children<'a>(node: &'a ArenaNode<'a, RefCell<Ast>>) -> Vec<Node> 
     node.children()
         .flat_map(|child| convert_block(child))
         .collect()
+}
+
+fn convert_mixed_task_list_children<'a>(node: &'a ArenaNode<'a, RefCell<Ast>>) -> Vec<Node> {
+    node.children()
+        .flat_map(|child| {
+            let task_state = {
+                let child_ast = child.data.borrow();
+                if let NodeValue::TaskItem(checked) = &child_ast.value {
+                    Some(checked.is_some())
+                } else {
+                    None
+                }
+            };
+
+            if let Some(done) = task_state {
+                vec![convert_task_item_as_list_item(child, done)]
+            } else {
+                convert_block(child)
+            }
+        })
+        .collect()
+}
+
+fn convert_task_item_as_list_item<'a>(node: &'a ArenaNode<'a, RefCell<Ast>>, done: bool) -> Node {
+    let mut content = convert_children(node);
+    let marker = if done { "[x] " } else { "[ ] " };
+    prepend_text_marker(&mut content, marker);
+    Node::ListItem { content }
+}
+
+fn prepend_text_marker(content: &mut Vec<Node>, marker: &str) {
+    let text = Node::Text {
+        text: marker.to_string(),
+        marks: vec![],
+    };
+
+    if let Some(Node::Paragraph { content }) = content.first_mut() {
+        content.insert(0, text);
+    } else {
+        content.insert(
+            0,
+            Node::Paragraph {
+                content: vec![text],
+            },
+        );
+    }
 }
