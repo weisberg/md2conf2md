@@ -1,0 +1,38 @@
+[package]
+name = "md2conf2md"
+version = "0.1.0"
+edition = "2021"
+description = "Bidirectional Markdown ↔ Confluence ADF converter"
+license = "MIT"
+repository = "https://github.com/briansw/md2conf2md"
+documentation = "https://docs.rs/md2conf2md"
+homepage = "https://github.com/briansw/md2conf2md"
+readme = "README.md"
+keywords = ["markdown", "confluence", "adf", "converter", "atlassian"]
+categories = ["text-processing", "parser-implementations"]
+rust-version = "1.74"
+exclude = [
+    "python/",
+    "tests/fixtures/",
+    ".github/",
+    "examples/",
+]
+
+[lib]
+name = "md2conf2md"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+python = ["pyo3", "pythonize"]
+
+[dependencies]
+comrak = { version = "0.36", default-features = false, features = ["syntect"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+pyo3 = { version = "0.24", features = ["extension-module", "abi3-py39"], optional = true }
+pythonize = { version = "0.24", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1"
