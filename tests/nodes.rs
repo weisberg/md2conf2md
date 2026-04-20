@@ -414,6 +414,87 @@ fn span_directive_underline_color() {
 }
 
 #[test]
+fn span_directive_preserves_parent_marks() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![Node::Text {
+            text: "important".to_string(),
+            marks: vec![Mark::Strong, Mark::Underline],
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        if let Node::Text { text, marks } = &content[0] {
+            assert_eq!(text, "important");
+            assert!(marks.iter().any(|m| matches!(m, Mark::Strong)));
+            assert!(marks.iter().any(|m| matches!(m, Mark::Underline)));
+        } else {
+            panic!("expected Text");
+        }
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
+fn code_mark_with_backticks_roundtrips() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![Node::Text {
+            text: "tick`inside".to_string(),
+            marks: vec![Mark::Code],
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        if let Node::Text { text, marks } = &content[0] {
+            assert_eq!(text, "tick`inside");
+            assert!(marks.iter().any(|m| matches!(m, Mark::Code)));
+        } else {
+            panic!("expected Text");
+        }
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
+fn link_text_with_closing_bracket_roundtrips() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![Node::Text {
+            text: "a]b".to_string(),
+            marks: vec![Mark::Link {
+                attrs: LinkAttrs {
+                    href: "https://example.com".to_string(),
+                    title: None,
+                    collection: None,
+                    id: None,
+                    occurence_key: None,
+                },
+            }],
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        if let Node::Text { text, marks } = &content[0] {
+            assert_eq!(text, "a]b");
+            assert!(marks.iter().any(|m| matches!(m, Mark::Link { .. })));
+        } else {
+            panic!("expected Text");
+        }
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
 fn placeholder_directive_parses() {
     let doc = md_to_adf(":placeholder[fill me in]\n").unwrap();
     if let Node::Paragraph { content } = &doc.content[0] {
@@ -423,6 +504,93 @@ fn placeholder_directive_parses() {
         assert!(has_placeholder, "got {content:?}");
     } else {
         panic!("expected paragraph");
+    }
+}
+
+#[test]
+fn extension_body_preserves_multiple_paragraphs() {
+    let doc = Document::new(vec![Node::Panel {
+        attrs: PanelAttrs {
+            panel_type: PanelType::Info,
+        },
+        content: vec![
+            Node::Paragraph {
+                content: vec![Node::Text {
+                    text: "First.".to_string(),
+                    marks: vec![],
+                }],
+            },
+            Node::Paragraph {
+                content: vec![Node::Text {
+                    text: "Second.".to_string(),
+                    marks: vec![],
+                }],
+            },
+        ],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Panel { content, .. } = &reparsed.content[0] {
+        assert_eq!(content.len(), 2, "intermediate markdown:\n{md}");
+        assert!(content.iter().all(|n| matches!(n, Node::Paragraph { .. })));
+    } else {
+        panic!("expected panel");
+    }
+}
+
+#[test]
+fn task_item_preserves_multiple_paragraphs() {
+    let doc = Document::new(vec![Node::TaskList {
+        attrs: Some(TaskListAttrs {
+            local_id: String::new(),
+        }),
+        content: vec![Node::TaskItem {
+            attrs: TaskItemAttrs {
+                local_id: String::new(),
+                state: TaskState::Todo,
+            },
+            content: vec![
+                Node::Paragraph {
+                    content: vec![Node::Text {
+                        text: "First.".to_string(),
+                        marks: vec![],
+                    }],
+                },
+                Node::Paragraph {
+                    content: vec![Node::Text {
+                        text: "Second.".to_string(),
+                        marks: vec![],
+                    }],
+                },
+            ],
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::TaskList { content, .. } = &reparsed.content[0] {
+        if let Node::TaskItem { content, .. } = &content[0] {
+            assert_eq!(content.len(), 2, "intermediate markdown:\n{md}");
+            assert!(content.iter().all(|n| matches!(n, Node::Paragraph { .. })));
+        } else {
+            panic!("expected task item");
+        }
+    } else {
+        panic!("expected task list");
+    }
+}
+
+#[test]
+fn mixed_task_and_plain_bullets_stay_bullet_list() {
+    let doc = md_to_adf("- [ ] task-shaped item\n- plain item\n").unwrap();
+    if let Node::BulletList { content } = &doc.content[0] {
+        assert_eq!(content.len(), 2);
+        assert!(content.iter().all(|n| matches!(n, Node::ListItem { .. })));
+    } else {
+        panic!("expected mixed list to stay a BulletList");
     }
 }
 

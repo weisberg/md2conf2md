@@ -12,7 +12,30 @@ pub fn convert_inline_children<'a>(node: &'a ArenaNode<'a, RefCell<Ast>>) -> Vec
     for child in node.children() {
         convert_inline(child, &[], &mut result);
     }
-    result
+    merge_adjacent_text(result)
+}
+
+fn merge_adjacent_text(nodes: Vec<Node>) -> Vec<Node> {
+    let mut merged: Vec<Node> = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        match node {
+            Node::Text { text, marks } => {
+                if let Some(Node::Text {
+                    text: previous_text,
+                    marks: previous_marks,
+                }) = merged.last_mut()
+                {
+                    if *previous_marks == marks {
+                        previous_text.push_str(&text);
+                        continue;
+                    }
+                }
+                merged.push(Node::Text { text, marks });
+            }
+            other => merged.push(other),
+        }
+    }
+    merged
 }
 
 /// Collect the concatenated plain text of all descendant Text/Code nodes.
