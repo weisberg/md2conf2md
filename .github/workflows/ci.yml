@@ -41,9 +41,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Create virtualenv
+        run: python -m venv .venv
       - name: Install maturin and pytest
-        run: pip install maturin pytest
+        run: |
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install maturin pytest
       - name: Build Python module
-        run: maturin develop --release
+        run: .venv/bin/maturin develop --release
       - name: Run Python tests
-        run: pytest tests/test_python.py -v
+        run: .venv/bin/pytest tests/test_python.py -v
