@@ -83,6 +83,15 @@ fn convert_inline<'a>(
         NodeValue::LineBreak => {
             out.push(Node::HardBreak);
         }
+        NodeValue::HtmlInline(html) if is_html_break(html) => {
+            out.push(Node::HardBreak);
+        }
+        NodeValue::HtmlInline(html) => {
+            out.push(Node::Text {
+                text: html.clone(),
+                marks: parent_marks.to_vec(),
+            });
+        }
         NodeValue::Emph => {
             let mut marks = parent_marks.to_vec();
             marks.push(Mark::Em);
@@ -172,4 +181,11 @@ fn convert_inline<'a>(
             }
         }
     }
+}
+
+fn is_html_break(html: &str) -> bool {
+    matches!(
+        html.trim().to_ascii_lowercase().as_str(),
+        "<br>" | "<br/>" | "<br />"
+    )
 }
