@@ -1,6 +1,6 @@
 //! Convert ADF block nodes to Markdown text.
 
-use super::inlines::write_inline;
+use super::inlines::{escape_directive_body, quote_attr_value, write_inline};
 use crate::adf::model::*;
 
 /// Write block-level ADF nodes to the output string.
@@ -154,26 +154,23 @@ pub fn write_block(node: &Node, out: &mut String, indent: &str) {
                 PanelType::Error => "error",
                 PanelType::Custom => "custom",
             };
-            out.push_str(indent);
-            out.push_str(&format!("```adf:panel type={type_name}\n"));
-            write_blocks_as_body(content, out, indent);
-            out.push_str(indent);
-            out.push_str("```\n");
+            let mut body = String::new();
+            write_blocks_as_body(content, &mut body, indent);
+            write_fenced_block(out, indent, &format!("adf:panel type={type_name}"), &body);
         }
         Node::Expand { attrs, content } | Node::NestedExpand { attrs, content } => {
-            out.push_str(indent);
-            if let Some(ref a) = attrs {
+            let info = if let Some(ref a) = attrs {
                 if let Some(ref title) = a.title {
-                    out.push_str(&format!("```adf:expand title=\"{title}\"\n"));
+                    format!("adf:expand title={}", quote_attr_value(title))
                 } else {
-                    out.push_str("```adf:expand\n");
+                    "adf:expand".to_string()
                 }
             } else {
-                out.push_str("```adf:expand\n");
-            }
-            write_blocks_as_body(content, out, indent);
-            out.push_str(indent);
-            out.push_str("```\n");
+                "adf:expand".to_string()
+            };
+            let mut body = String::new();
+            write_blocks_as_body(content, &mut body, indent);
+            write_fenced_block(out, indent, &info, &body);
         }
         Node::LayoutSection { content } => {
             let widths: Vec<String> = content
@@ -186,22 +183,25 @@ pub fn write_block(node: &Node, out: &mut String, indent: &str) {
                     }
                 })
                 .collect();
-            out.push_str(indent);
-            out.push_str(&format!("```adf:layout widths={}\n", widths.join(",")));
+            let mut body = String::new();
             let mut first_col = true;
             for col in content {
                 if let Node::LayoutColumn { content, .. } = col {
                     if !first_col {
-                        out.push_str(indent);
-                        out.push_str("---col---\n");
-                        out.push('\n');
+                        body.push_str(indent);
+                        body.push_str("---col---\n");
+                        body.push('\n');
                     }
                     first_col = false;
-                    write_blocks_as_body(content, out, indent);
+                    write_blocks_as_body(content, &mut body, indent);
                 }
             }
-            out.push_str(indent);
-            out.push_str("```\n");
+            write_fenced_block(
+                out,
+                indent,
+                &format!("adf:layout widths={}", widths.join(",")),
+                &body,
+            );
         }
         Node::MediaSingle { attrs, content } => {
             // Find the media child
@@ -242,53 +242,57 @@ pub fn write_block(node: &Node, out: &mut String, indent: &str) {
         }
         Node::BlockCard { attrs } => {
             out.push_str(indent);
-            out.push_str(&format!(":card[{}]{{type=block}}\n", attrs.url));
+            out.push_str(&format!(
+                ":card[{}]{{type=block}}\n",
+                escape_directive_body(&attrs.url)
+            ));
         }
         Node::EmbedCard { attrs } => {
             out.push_str(indent);
             let mut dir_attrs = vec!["type=embed".to_string()];
             if let Some(ref layout) = attrs.layout {
-                dir_attrs.push(format!("layout={layout}"));
+                dir_attrs.push(format!("layout={}", quote_attr_value(layout)));
             }
             if let Some(width) = attrs.width {
                 dir_attrs.push(format!("width={width}"));
             }
             out.push_str(&format!(
                 ":card[{}]{{{}}}\n",
-                attrs.url,
+                escape_directive_body(&attrs.url),
                 dir_attrs.join(" ")
             ));
         }
         Node::Extension { attrs, .. } | Node::BodiedExtension { attrs, .. } => {
-            out.push_str(indent);
             let mut attr_parts = vec![
-                format!("extensionType=\"{}\"", attrs.extension_type),
-                format!("extensionKey=\"{}\"", attrs.extension_key),
+                format!("extensionType={}", quote_attr_value(&attrs.extension_type)),
+                format!("extensionKey={}", quote_attr_value(&attrs.extension_key)),
             ];
             if let Some(ref params) = attrs.parameters {
                 attr_parts.push(format!(
                     "parameters={}",
-                    serde_json::to_string(params).unwrap_or_default()
+                    percent_encode_attr(&serde_json::to_string(params).unwrap_or_default())
                 ));
             }
-            out.push_str(&format!("```adf:ext {}\n", attr_parts.join(" ")));
+            let mut body = String::new();
             if let Node::BodiedExtension { content, .. } = node {
-                write_blocks_as_body(content, out, indent);
+                write_blocks_as_body(content, &mut body, indent);
             }
-            out.push_str(indent);
-            out.push_str("```\n");
+            write_fenced_block(
+                out,
+                indent,
+                &format!("adf:ext {}", attr_parts.join(" ")),
+                &body,
+            );
         }
         Node::Unknown(value) => {
-            out.push_str(indent);
-            out.push_str("```adf:raw\n");
+            let mut body = String::new();
             let json = serde_json::to_string_pretty(value).unwrap_or_default();
             for line in json.lines() {
-                out.push_str(indent);
-                out.push_str(line);
-                out.push('\n');
+                body.push_str(indent);
+                body.push_str(line);
+                body.push('\n');
             }
-            out.push_str(indent);
-            out.push_str("```\n");
+            write_fenced_block(out, indent, "adf:raw", &body);
         }
         // Inline nodes at block level — wrap in implicit paragraph
         Node::Text { .. }
@@ -477,8 +481,13 @@ fn flatten_cell(s: &str) -> String {
 /// Extract inline nodes from table cell content (which wraps in paragraphs).
 fn get_cell_inlines(content: &[Node]) -> Vec<Node> {
     let mut inlines = Vec::new();
+    let mut seen_paragraph = false;
     for node in content {
         if let Node::Paragraph { content } = node {
+            if seen_paragraph {
+                inlines.push(Node::HardBreak);
+            }
+            seen_paragraph = true;
             inlines.extend(content.iter().cloned());
         }
     }
@@ -493,4 +502,49 @@ fn get_cell_inlines(content: &[Node]) -> Vec<Node> {
 /// This emits the content without leading blank lines.
 fn write_blocks_as_body(content: &[Node], out: &mut String, indent: &str) {
     write_blocks(content, out, indent);
+}
+
+fn write_fenced_block(out: &mut String, indent: &str, info: &str, body: &str) {
+    let fence = fence_for_body(body);
+    out.push_str(indent);
+    out.push_str(&fence);
+    out.push_str(info);
+    out.push('\n');
+    out.push_str(body);
+    out.push_str(indent);
+    out.push_str(&fence);
+    out.push('\n');
+}
+
+fn fence_for_body(body: &str) -> String {
+    "`".repeat(max_backtick_run(body).max(2) + 1)
+}
+
+fn max_backtick_run(text: &str) -> usize {
+    let mut max_run = 0usize;
+    let mut current = 0usize;
+    for ch in text.chars() {
+        if ch == '`' {
+            current += 1;
+            max_run = max_run.max(current);
+        } else {
+            current = 0;
+        }
+    }
+    max_run
+}
+
+fn percent_encode_attr(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+    }
+    out
 }

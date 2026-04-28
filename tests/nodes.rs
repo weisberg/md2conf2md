@@ -363,6 +363,149 @@ fn hard_break_in_table_cell() {
     for line in md.lines().filter(|l| l.starts_with('|')) {
         assert!(!line.contains("\\\n"), "row wrapped: {line}");
     }
+
+    let reparsed = md_to_adf(&md).unwrap();
+    if let Node::Table { content, .. } = &reparsed.content[0] {
+        if let Node::TableRow { content: cells } = &content[1] {
+            if let Node::TableCell { content, .. } = &cells[0] {
+                if let Node::Paragraph { content } = &content[0] {
+                    assert!(
+                        content.iter().any(|n| matches!(n, Node::HardBreak)),
+                        "intermediate markdown:\n{md}\ncontent: {content:?}"
+                    );
+                } else {
+                    panic!("expected paragraph");
+                }
+            } else {
+                panic!("expected table cell");
+            }
+        } else {
+            panic!("expected table row");
+        }
+    } else {
+        panic!("expected table");
+    }
+}
+
+#[test]
+fn html_br_parses_as_hard_break() {
+    let doc = md_to_adf("top<br>bottom\n").unwrap();
+    if let Node::Paragraph { content } = &doc.content[0] {
+        assert!(
+            content.iter().any(|n| matches!(n, Node::HardBreak)),
+            "got {content:?}"
+        );
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
+fn multiparagraph_table_cell_does_not_concatenate_text() {
+    let doc = Document::new(vec![Node::Table {
+        attrs: None,
+        content: vec![
+            Node::TableRow {
+                content: vec![Node::TableHeader {
+                    attrs: None,
+                    content: vec![Node::Paragraph {
+                        content: vec![Node::Text {
+                            text: "Header".to_string(),
+                            marks: vec![],
+                        }],
+                    }],
+                }],
+            },
+            Node::TableRow {
+                content: vec![Node::TableCell {
+                    attrs: None,
+                    content: vec![
+                        Node::Paragraph {
+                            content: vec![Node::Text {
+                                text: "First.".to_string(),
+                                marks: vec![],
+                            }],
+                        },
+                        Node::Paragraph {
+                            content: vec![Node::Text {
+                                text: "Second.".to_string(),
+                                marks: vec![],
+                            }],
+                        },
+                    ],
+                }],
+            },
+        ],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    assert!(md.contains("First.<br>Second."), "got:\n{md}");
+}
+
+#[test]
+fn media_single_attrs_roundtrip() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![Node::MediaSingle {
+            attrs: Some(MediaSingleAttrs {
+                layout: Some("center".to_string()),
+                width: Some(320.0),
+            }),
+            content: vec![Node::Media {
+                attrs: MediaAttrs {
+                    media_type: MediaType::External,
+                    id: "https://example.com/image.png".to_string(),
+                    collection: String::new(),
+                    width: None,
+                    height: None,
+                    alt: Some("alt".to_string()),
+                },
+            }],
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        if let Node::MediaSingle { attrs, .. } = &content[0] {
+            let attrs = attrs.as_ref().expect("media attrs");
+            assert_eq!(attrs.layout.as_deref(), Some("center"));
+            assert_eq!(attrs.width, Some(320.0));
+        } else {
+            panic!("expected mediaSingle, got {:?}", content[0]);
+        }
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
+fn media_inline_roundtrip() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![Node::MediaInline {
+            attrs: MediaAttrs {
+                media_type: MediaType::External,
+                id: "https://example.com/icon.png".to_string(),
+                collection: String::new(),
+                width: None,
+                height: None,
+                alt: Some("icon".to_string()),
+            },
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        assert!(
+            matches!(&content[0], Node::MediaInline { attrs }
+                if attrs.id == "https://example.com/icon.png" && attrs.alt.as_deref() == Some("icon")),
+            "intermediate markdown:\n{md}\ncontent: {content:?}"
+        );
+    } else {
+        panic!("expected paragraph");
+    }
 }
 
 #[test]
@@ -495,6 +638,140 @@ fn link_text_with_closing_bracket_roundtrips() {
 }
 
 #[test]
+fn inline_directive_bodies_with_brackets_roundtrip() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![
+            Node::Status {
+                attrs: StatusAttrs {
+                    text: r#"Done ] \ soon"#.to_string(),
+                    color: StatusColor::Green,
+                    local_id: None,
+                    style: None,
+                },
+            },
+            Node::Text {
+                text: " ".to_string(),
+                marks: vec![],
+            },
+            Node::Placeholder {
+                attrs: PlaceholderAttrs {
+                    text: r#"fill ] \ gap"#.to_string(),
+                },
+            },
+            Node::Text {
+                text: " ".to_string(),
+                marks: vec![],
+            },
+            Node::InlineCard {
+                attrs: CardAttrs {
+                    url: r#"https://example.com/a]b\c"#.to_string(),
+                },
+            },
+        ],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        assert!(
+            matches!(&content[0], Node::Status { attrs } if attrs.text == r#"Done ] \ soon"#),
+            "intermediate markdown:\n{md}\ncontent: {content:?}"
+        );
+        assert!(
+            matches!(&content[2], Node::Placeholder { attrs } if attrs.text == r#"fill ] \ gap"#),
+            "intermediate markdown:\n{md}\ncontent: {content:?}"
+        );
+        assert!(
+            matches!(&content[4], Node::InlineCard { attrs } if attrs.url == r#"https://example.com/a]b\c"#),
+            "intermediate markdown:\n{md}\ncontent: {content:?}"
+        );
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
+fn mention_attrs_with_quotes_roundtrip() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![Node::Mention {
+            attrs: MentionAttrs {
+                id: r#"account]id"#.to_string(),
+                text: Some(r#"Jane "JJ" \ Doe"#.to_string()),
+                access_level: None,
+                user_type: None,
+            },
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        assert!(
+            matches!(&content[0], Node::Mention { attrs }
+                if attrs.id == r#"account]id"# && attrs.text.as_deref() == Some(r#"Jane "JJ" \ Doe"#)),
+            "intermediate markdown:\n{md}\ncontent: {content:?}"
+        );
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
+fn emoji_roundtrips_with_directive_syntax() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![Node::Emoji {
+            attrs: EmojiAttrs {
+                short_name: ":custom]emoji:".to_string(),
+                id: Some(r#"emoji-"id""#.to_string()),
+                text: Some(r#"Party \ time"#.to_string()),
+            },
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        assert!(
+            matches!(&content[0], Node::Emoji { attrs }
+                if attrs.short_name == ":custom]emoji:"
+                    && attrs.id.as_deref() == Some(r#"emoji-"id""#)
+                    && attrs.text.as_deref() == Some(r#"Party \ time"#)),
+            "intermediate markdown:\n{md}\ncontent: {content:?}"
+        );
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
+fn span_with_code_and_escaped_body_roundtrips() {
+    let doc = Document::new(vec![Node::Paragraph {
+        content: vec![Node::Text {
+            text: r#"tick`]body"#.to_string(),
+            marks: vec![Mark::Code, Mark::Underline],
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Paragraph { content } = &reparsed.content[0] {
+        if let Node::Text { text, marks } = &content[0] {
+            assert_eq!(text, r#"tick`]body"#, "intermediate markdown:\n{md}");
+            assert!(marks.iter().any(|m| matches!(m, Mark::Code)));
+            assert!(marks.iter().any(|m| matches!(m, Mark::Underline)));
+        } else {
+            panic!("expected Text");
+        }
+    } else {
+        panic!("expected paragraph");
+    }
+}
+
+#[test]
 fn placeholder_directive_parses() {
     let doc = md_to_adf(":placeholder[fill me in]\n").unwrap();
     if let Node::Paragraph { content } = &doc.content[0] {
@@ -591,6 +868,34 @@ fn mixed_task_and_plain_bullets_stay_bullet_list() {
         assert!(content.iter().all(|n| matches!(n, Node::ListItem { .. })));
     } else {
         panic!("expected mixed list to stay a BulletList");
+    }
+}
+
+#[test]
+fn expand_title_with_quotes_roundtrips() {
+    let doc = Document::new(vec![Node::Expand {
+        attrs: Some(ExpandAttrs {
+            title: Some(r#"Quote "this" \ title"#.to_string()),
+        }),
+        content: vec![Node::Paragraph {
+            content: vec![Node::Text {
+                text: "Hidden.".to_string(),
+                marks: vec![],
+            }],
+        }],
+    }]);
+
+    let md = adf_to_md(&doc).unwrap();
+    let reparsed = md_to_adf(&md).unwrap();
+
+    if let Node::Expand { attrs, .. } = &reparsed.content[0] {
+        assert_eq!(
+            attrs.as_ref().and_then(|a| a.title.as_deref()),
+            Some(r#"Quote "this" \ title"#),
+            "intermediate markdown:\n{md}"
+        );
+    } else {
+        panic!("expected expand");
     }
 }
 

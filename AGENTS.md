@@ -6,7 +6,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 **md2conf2md** is a Rust library with Python bindings for bidirectional conversion between Markdown and Confluence ADF (Atlassian Document Format). The core conversion logic is Rust, exposed to Python via PyO3/maturin.
 
-The reference implementation at `/Users/weisberg/Documents/Development/gh/third-party/md2conf-python` provides a mature Markdown→Confluence CSF converter (md2conf) that can be studied for conversion patterns and test fixtures.
+The [`md2conf`](https://github.com/hunyadi/md2conf) reference implementation provides a mature Markdown→Confluence CSF converter that can be studied for conversion patterns and test fixtures.
 
 ## Build & Development Commands
 

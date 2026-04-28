@@ -12,15 +12,26 @@ pub fn write_inline(node: &Node, out: &mut String) {
             out.push_str("\\\n");
         }
         Node::Emoji { attrs } => {
-            // Emit as :shortName: — strip the colons if already present
             let name = attrs.short_name.trim_matches(':');
-            out.push(':');
-            out.push_str(name);
-            out.push(':');
+            let mut dir_attrs = Vec::new();
+            if let Some(ref id) = attrs.id {
+                dir_attrs.push(format!("id={}", quote_attr_value(id)));
+            }
+            if let Some(ref text) = attrs.text {
+                dir_attrs.push(format!("text={}", quote_attr_value(text)));
+            }
+            out.push_str(&format!(":emoji[{}]", escape_directive_body(name)));
+            if !dir_attrs.is_empty() {
+                out.push_str(&format!("{{{}}}", dir_attrs.join(" ")));
+            }
         }
         Node::Mention { attrs } => {
             let display = attrs.text.as_deref().unwrap_or(&attrs.id);
-            out.push_str(&format!("@[{}]{{text=\"{display}\"}}", attrs.id));
+            out.push_str(&format!(
+                "@[{}]{{text={}}}",
+                escape_directive_body(&attrs.id),
+                quote_attr_value(display)
+            ));
         }
         Node::Date { attrs } => {
             let date = timestamp_to_date(&attrs.timestamp);
@@ -35,10 +46,16 @@ pub fn write_inline(node: &Node, out: &mut String) {
                 StatusColor::Yellow => "yellow",
                 StatusColor::Green => "green",
             };
-            out.push_str(&format!(":status[{}]{{color={color}}}", attrs.text));
+            out.push_str(&format!(
+                ":status[{}]{{color={color}}}",
+                escape_directive_body(&attrs.text)
+            ));
         }
         Node::InlineCard { attrs } => {
-            out.push_str(&format!(":card[{}]{{type=inline}}", attrs.url));
+            out.push_str(&format!(
+                ":card[{}]{{type=inline}}",
+                escape_directive_body(&attrs.url)
+            ));
         }
         Node::MediaInline { attrs } => {
             let alt = attrs.alt.as_deref().unwrap_or("");
@@ -46,7 +63,10 @@ pub fn write_inline(node: &Node, out: &mut String) {
             out.push_str("{inline=1}");
         }
         Node::Placeholder { attrs } => {
-            out.push_str(&format!(":placeholder[{}]", attrs.text));
+            out.push_str(&format!(
+                ":placeholder[{}]",
+                escape_directive_body(&attrs.text)
+            ));
         }
         Node::MediaSingle { attrs, content } => {
             // Inline mediaSingle (shouldn't normally happen, but handle it)
@@ -130,11 +150,19 @@ fn write_marked_text(text: &str, marks: &[Mark], out: &mut String) {
         }
     }
 
+    if is_code && !directive_attrs.is_empty() {
+        directive_attrs.push("code=1".to_string());
+    }
+
     let mut rendered = String::new();
     rendered.push_str(&cm_prefix);
 
     if !directive_attrs.is_empty() {
-        rendered.push_str(&format!(":span[{text}]{{{}}}", directive_attrs.join(" ")));
+        rendered.push_str(&format!(
+            ":span[{}]{{{}}}",
+            escape_directive_body(text),
+            directive_attrs.join(" ")
+        ));
     } else if is_code {
         rendered.push_str(&format_code_span(text));
     } else {
@@ -155,6 +183,38 @@ fn write_marked_text(text: &str, marks: &[Mark], out: &mut String) {
     } else {
         out.push_str(&rendered);
     }
+}
+
+pub(crate) fn escape_directive_body(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            ']' => out.push_str("\\\\]"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+pub(crate) fn quote_attr_value(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            '"' => out.push_str("\\\\\""),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn format_code_span(text: &str) -> String {
@@ -181,20 +241,75 @@ fn max_backtick_run(text: &str) -> usize {
 }
 
 /// Backslash-escape characters that would otherwise trigger Markdown parsing.
-/// Conservatively targets the metacharacters most likely to introduce
-/// ambiguity in plain text: `*`, `_`, `` ` ``, `[`, `]`, and `\`.
+/// Conservatively targets inline metacharacters plus block markers that are
+/// only dangerous at the start of a rendered line.
 fn escape_md(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\\' | '*' | '_' | '`' | '[' | ']' => {
-                out.push('\\');
-                out.push(ch);
-            }
-            _ => out.push(ch),
+    for line in text.split_inclusive('\n') {
+        if let Some(stripped) = line.strip_suffix('\n') {
+            out.push_str(&escape_md_line(stripped));
+            out.push('\n');
+        } else {
+            out.push_str(&escape_md_line(line));
         }
     }
     out
+}
+
+fn escape_md_line(line: &str) -> String {
+    let ordered_marker_index = ordered_list_marker_index(line);
+    let escape_first = starts_with_block_marker(line);
+    let mut out = String::with_capacity(line.len());
+
+    for (i, ch) in line.char_indices() {
+        let needs_escape = matches!(ch, '\\' | '*' | '_' | '`' | '[' | ']' | '~')
+            || (escape_first && i == 0)
+            || Some(i) == ordered_marker_index;
+        if needs_escape {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn starts_with_block_marker(line: &str) -> bool {
+    line.starts_with('#')
+        || line.starts_with('>')
+        || is_unordered_list_marker(line)
+        || is_thematic_break(line)
+        || line.starts_with("```")
+        || line.starts_with("~~~")
+}
+
+fn is_unordered_list_marker(line: &str) -> bool {
+    matches!(
+        line.as_bytes(),
+        [b'-' | b'+' | b'*', b' ' | b'\t', ..] | [b'-' | b'+' | b'*']
+    )
+}
+
+fn is_thematic_break(line: &str) -> bool {
+    let trimmed = line.trim();
+    matches!(trimmed, "---" | "***" | "___")
+}
+
+fn ordered_list_marker_index(line: &str) -> Option<usize> {
+    let mut digit_count = 0usize;
+    for (i, ch) in line.char_indices() {
+        if ch.is_ascii_digit() {
+            digit_count += 1;
+            continue;
+        }
+        if digit_count > 0 && digit_count <= 9 && (ch == '.' || ch == ')') {
+            let next = line[i + ch.len_utf8()..].chars().next();
+            if next.is_none() || matches!(next, Some(' ' | '\t')) {
+                return Some(i);
+            }
+        }
+        return None;
+    }
+    None
 }
 
 /// Try to extract plain text from any node (fallback).
