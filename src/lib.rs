@@ -1,12 +1,26 @@
 //! `md2conf2md` — bidirectional Markdown ↔ Confluence ADF converter.
 //!
-//! # Examples
+//! Two entry points:
+//!
+//! * [`md_to_adf()`] / [`adf_to_md()`] — work with strongly-typed [`Document`] values.
+//! * [`md_to_adf_json()`] / [`adf_json_to_md()`] — string-in/string-out, when
+//!   you only need the JSON wire format.
+//!
+//! All ADF node and mark types are re-exported at the crate root so downstream
+//! code can pattern-match without reaching into [`adf::model`]:
 //!
 //! ```
-//! let doc = md2conf2md::md_to_adf("# Hello\n\nWorld").unwrap();
+//! use md2conf2md::{Document, Node};
+//!
+//! let doc: Document = md2conf2md::md_to_adf("# Hello\n\nWorld").unwrap();
+//! assert!(matches!(doc.content.first(), Some(Node::Heading { .. })));
+//!
 //! let md = md2conf2md::adf_to_md(&doc).unwrap();
 //! assert!(md.contains("# Hello"));
 //! ```
+//!
+//! Unknown ADF nodes round-trip losslessly via [`Node::Unknown`], so documents
+//! using future Atlassian schema additions don't need a converter update.
 
 pub mod adf;
 pub mod adf_to_md;
@@ -15,7 +29,7 @@ pub mod md_to_adf;
 #[cfg(feature = "python")]
 mod py;
 
-pub use adf::model::{Document, Mark, Node};
+pub use adf::model::*;
 
 /// Errors that can occur during conversion.
 #[derive(Debug, thiserror::Error)]

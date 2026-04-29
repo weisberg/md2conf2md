@@ -1,0 +1,1 @@
+{"version":1,"type":"doc","content":[{"type":"layoutSection","content":[{"type":"layoutColumn","attrs":{"width":33.0},"content":[{"type":"paragraph","content":[{"type":"text","text":"Left column content."}]}]},{"type":"layoutColumn","attrs":{"width":67.0},"content":[{"type":"paragraph","content":[{"type":"text","text":"Right column content."}]}]}]}]}

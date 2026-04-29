@@ -1,0 +1,1 @@
+{"version":1,"type":"doc","content":[{"type":"bodiedExtension","attrs":{"extensionType":"com.atlassian.confluence.macro.core","extensionKey":"bodied-macro"},"content":[{"type":"paragraph","content":[{"type":"text","text":"This is the macro body."}]},{"type":"paragraph","content":[{"type":"text","text":"It can have multiple paragraphs."}]}]}]}

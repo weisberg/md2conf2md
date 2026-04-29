@@ -214,6 +214,171 @@ fn stability_card() {
     test_md_stability("card");
 }
 
+#[test]
+fn md_to_adf_date() {
+    test_md_to_adf("date");
+}
+
+#[test]
+fn roundtrip_date() {
+    test_adf_roundtrip("date");
+}
+
+#[test]
+fn stability_date() {
+    test_md_stability("date");
+}
+
+#[test]
+fn md_to_adf_emoji() {
+    test_md_to_adf("emoji");
+}
+
+#[test]
+fn roundtrip_emoji() {
+    test_adf_roundtrip("emoji");
+}
+
+#[test]
+fn stability_emoji() {
+    test_md_stability("emoji");
+}
+
+#[test]
+fn md_to_adf_mention() {
+    test_md_to_adf("mention");
+}
+
+#[test]
+fn roundtrip_mention() {
+    test_adf_roundtrip("mention");
+}
+
+#[test]
+fn stability_mention() {
+    test_md_stability("mention");
+}
+
+#[test]
+fn md_to_adf_placeholder() {
+    test_md_to_adf("placeholder");
+}
+
+#[test]
+fn roundtrip_placeholder() {
+    test_adf_roundtrip("placeholder");
+}
+
+#[test]
+fn stability_placeholder() {
+    test_md_stability("placeholder");
+}
+
+#[test]
+fn md_to_adf_media_group() {
+    test_md_to_adf("media_group");
+}
+
+#[test]
+fn roundtrip_media_group() {
+    test_adf_roundtrip("media_group");
+}
+
+#[test]
+fn stability_media_group() {
+    test_md_stability("media_group");
+}
+
+#[test]
+fn md_to_adf_media_inline() {
+    test_md_to_adf("media_inline");
+}
+
+#[test]
+fn roundtrip_media_inline() {
+    test_adf_roundtrip("media_inline");
+}
+
+#[test]
+fn stability_media_inline() {
+    test_md_stability("media_inline");
+}
+
+#[test]
+fn md_to_adf_nested_expand() {
+    test_md_to_adf("nested_expand");
+}
+
+#[test]
+fn roundtrip_nested_expand() {
+    test_adf_roundtrip("nested_expand");
+}
+
+#[test]
+fn stability_nested_expand() {
+    test_md_stability("nested_expand");
+}
+
+#[test]
+fn md_to_adf_layout() {
+    test_md_to_adf("layout");
+}
+
+#[test]
+fn roundtrip_layout() {
+    test_adf_roundtrip("layout");
+}
+
+#[test]
+fn stability_layout() {
+    test_md_stability("layout");
+}
+
+#[test]
+fn md_to_adf_extension() {
+    test_md_to_adf("extension");
+}
+
+#[test]
+fn roundtrip_extension() {
+    test_adf_roundtrip("extension");
+}
+
+#[test]
+fn stability_extension() {
+    test_md_stability("extension");
+}
+
+#[test]
+fn md_to_adf_bodied_extension() {
+    test_md_to_adf("bodied_extension");
+}
+
+#[test]
+fn roundtrip_bodied_extension() {
+    test_adf_roundtrip("bodied_extension");
+}
+
+#[test]
+fn stability_bodied_extension() {
+    test_md_stability("bodied_extension");
+}
+
+#[test]
+fn md_to_adf_extra_marks() {
+    test_md_to_adf("extra_marks");
+}
+
+#[test]
+fn roundtrip_extra_marks() {
+    test_adf_roundtrip("extra_marks");
+}
+
+#[test]
+fn stability_extra_marks() {
+    test_md_stability("extra_marks");
+}
+
 // ── ADF round-trip tests ────────────────────────────────────────────────────
 
 #[test]

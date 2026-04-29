@@ -1,0 +1,1 @@
+A :span[underlined]{underline=1} word, then :span[red]{color=#ff0000} text, then :span[highlighted]{bg=#ffff00} text, then H:span[2]{sub=1}O, then E=mc:span[2]{sup=1}, then :span[bordered]{border=1} text.
